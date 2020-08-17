@@ -10,7 +10,7 @@ const kG = 9.81;
 // air density kg/m^3
 const rho = 1.225
 const kWingArea = 1 / 500;
-const kMass = 1 / 500;
+const kMass = 1 / 100;
 // Higher is slower
 const kTimeScale = 50;
 
@@ -26,55 +26,28 @@ function aoaToLiftCoef(aoa) {
     return cl;
 }
 
-class Ball {
-    constructor() {
-        this.x = 4000;
-        this.y = 2200;
-        this.vXi = 2000;
-        this.vYi = -300;
-        this.vX = 0;
-        this.vY = 0;
-    }
-    draw(drawCtx) {
-        const kScale = 20;
-
-        let x = kPxPerMeter * this.x;
-        let y = kPxPerMeter * this.y;
-        // About origin
-
-        drawCtx.fillStyle = "#000";
-        drawCtx.strokeStyle = "#000";
-        drawCircle(drawCtx, x, y, 10);
-        drawCtx.fill();
-    }
-    step(globalCtx) {
-        this.vX = this.vXi;
-        this.vY = kG * globalCtx.t + this.vYi;
-
-        this.x += this.vX * globalCtx.dt;
-        this.y += this.vY * globalCtx.dt;
-    }
-}
-
-const kDrag = 1 / 1000000;
+const kDrag = 1 / 100000000;
 const kLift = 1 / 10000000;
 class Plane {
     constructor() {
         this.x = 10000;
-        this.y = 5000;
+        this.y = 20000;
         this.vX = 2000;
-        this.vY = -100;
-        this.C = (Math.atanh(mag([this.vX, this.vY]) * Math.sqrt(kLift/kG)))/(Math.sqrt(kG * kLift));
+        this.vY = -200;
+        this.theta = (this.vY/this.vX) * Math.PI;
+        this.omega = 0;
         this.wing = {
-            arm: -1,
-            aoa: 0,
+            armElement: document.getElementById("wing-arm"),
+            areaElement: document.getElementById("wing-area"),
         };
         this.stab = {
-            arm: -4,
-            aoa: -5,
+            armElement: document.getElementById("stab-arm"),
+            areaElement: document.getElementById("stab-area"),
         };
+        this.body = {
+            momentElement: document.getElementById("moment"),
+        }
         this.angleFromHorizon = 0;
-        this.aoa = 0;
     }
     draw(drawCtx) {
         const kScale = 10;
@@ -96,7 +69,7 @@ class Plane {
 
         drawCtx.fillStyle = "#000";
         drawCtx.strokeStyle = "#000";
-        let theta = this.angleFromHorizon;
+        let theta = this.theta;
         let scaled = scalePoints(shape, kScale);
         let rotated = rotatePoints(scaled, theta);
         drawPolygonAtPoint(drawCtx, rotated, x, y);
@@ -105,36 +78,86 @@ class Plane {
         drawCircle(drawCtx, x, y, 2);
         drawCtx.fill();
 
-        let wingRotated = rotatePoint(scalePoint([this.wing.arm, 0], kScale), theta);
+        let wingArm = this.wing.armElement.value / 10;
+        let stabArm = this.stab.armElement.value / 10;
+
+        let wingRotated = rotatePoint(scalePoint([wingArm, 0], kScale), theta);
         drawCircle(drawCtx, wingRotated[0] + x, wingRotated[1] + y, 2);
-        let stabRotated = rotatePoint(scalePoint([this.stab.arm, 0], kScale), theta);
+        let stabRotated = rotatePoint(scalePoint([stabArm, 0], kScale), theta);
         drawCircle(drawCtx, stabRotated[0] + x, stabRotated[1] + y, 2);
 
         drawCtx.fillStyle = "#000";
         drawCtx.fillText('Vy: ' + Number.parseFloat(this.vY).toFixed(1), 0, 10);
         drawCtx.fillText('Vx: ' + Number.parseFloat(this.vX).toFixed(1), 0, 20);
-        let angleDeg = -180 * this.angleFromHorizon / Math.PI;
-        drawCtx.fillText('angle from horizon: ' + Number.parseFloat(angleDeg).toFixed(1), 0, 30);
+        drawCtx.fillText('\u{03C9}: ' + Number.parseFloat(this.omega).toFixed(4), 0, 30);
+        let angleDeg = -180 * this.theta / Math.PI;
+        drawCtx.fillText('angle from horizon: ' + Number.parseFloat(angleDeg).toFixed(1), 0, 40);
     }
     step(globalCtx) {
-        // Calculate instantaneous force vectors from each component (body, wing, stab)
-        // Apply forces for each compontent about moment arm to create rotation
-        // Apply sum of forces in X and Y directions to calculate velocity and translation 
+        // Get input values.
+        let scale = 1000    ;
+        let moment = this.body.momentElement.value / scale;
+        let wingArm = this.wing.armElement.value / scale;
+        let wingArea = this.wing.areaElement.value / scale;
+        let stabArm = this.stab.armElement.value / scale;
+        let stabArea = this.stab.areaElement.value / scale;
 
-        this.angleFromHorizon = Math.atan(this.vY / this.vX);
-        let theta = this.angleFromHorizon;
+        // Calculate important constants from inputs.
+        let kLiftWing = kLift * wingArea;
+        let kLiftStab = kLift * stabArea;
+        let kI = 1 / moment; 
+
+        // Calculate instantaneous force magntitudes from each component (body, wing, stab)
+        
+        // Project the velocity vector onto the directional vector to get the component of velocity in the direction we are moving.
+        let vMag =mag([this.vX, this.vY]);
+        let vDir = Math.atan(this.vY / this.vX);
+        let vProj = vMag * Math.cos(vDir - this.theta);
+        let wingForce = kLiftWing * Math.pow(vProj, 2);
+        let stabForce = kLiftStab * Math.pow(vProj, 2);
+        let dragForce = kDrag * Math.pow(vProj, 2);
+        let gravForce = kG * kMass;
+
+        // Apply forces for each compontent about moment arm to create rotation. Gravity is ignored because it is applied at the center of gravity.
+        this.omega = this.omega +
+                     (kI * ((stabForce * stabArm) - (wingForce * wingArm)) * globalCtx.dt);
+        this.theta = this.theta +
+                     (this.omega * globalCtx.dt);
+
+        // Apply sum of forces in X and Y directions to calculate velocity and translation 
+        let forceX = (wingForce * Math.cos(this.theta + Math.PI/2)) - 
+                     (stabForce * Math.cos(this.theta + Math.PI/2)) -
+                     (dragForce * Math.cos(this.theta));
+        let forceY = (gravForce) + 
+                     (stabForce * Math.sin(this.theta + Math.PI/2)) - 
+                     (wingForce * Math.sin(this.theta + Math.PI/2)) - 
+                     (dragForce * Math.sin(this.theta));
+        console.log(wingForce, stabForce, gravForce, forceX, forceY);
+
+        this.vX = this.vX +
+                  (forceX / kMass) * (globalCtx.dt);
+        this.vY = this.vY +
+                  (forceY / kMass) * (globalCtx.dt);
+        this.x = this.x +
+                 (this.vX * globalCtx.dt);
+        this.y = this.y +
+                 (this.vY * globalCtx.dt);
+
+        // this.angleFromHorizon = this.theta;
+        // let theta = this.angleFromHorizon;
+
         // this.vX = 1 / ((1 / this.vXi) + (globalCtx.t * ((kDrag / Math.cos(theta)) - (kLift * Math.tan(theta) / Math.cos(theta)))));
         // this.vX = 1 / ((1 / this.vXi) + (globalCtx.t * ((kDrag / Math.cos(theta)))));
         // this.vX = 1 / ((1 / this.vXi) + (globalCtx.t * (kDrag)));
-        let vel = (Math.sqrt(kG)*Math.tanh((this.C * Math.sqrt(kG * kLift)) + (Math.sqrt(kG * kLift) * globalCtx.t)))/Math.sqrt(kLift);
-        this.vY = vel * Math.sin(theta);
-        this.vX = vel * Math.cos(theta);
-        this.angleFromHorizon = Math.atan(this.vY / this.vX);
+        // let vel = (Math.sqrt(kG)*Math.tanh((this.C * Math.sqrt(kG * kLift)) + (Math.sqrt(kG * kLift) * globalCtx.t)))/Math.sqrt(kLift);
+        // this.vY = vel * Math.sin(theta);
+        // this.vX = vel * Math.cos(theta);
+        // this.angleFromHorizon = Math.atan(this.vY / this.vX);
 
         // this.vY = (Math.sqrt(kG)*Math.tanh(this.vYi * Math.sqrt(kG*kLift) + Math.sqrt(kG*kLift)*globalCtx.t))/(Math.sqrt(kLift));
 
-        this.x += this.vX * globalCtx.dt;
-        this.y += this.vY * globalCtx.dt;
+        // this.x += this.vX * globalCtx.dt;
+        // this.y += this.vY * globalCtx.dt;
     }
 }
 
@@ -150,7 +173,7 @@ function makeGlobalContext() {
         ]
     };
 }
-let globalCtx = makeGlobalContext();
+let globalCtx;
 
 function step(drawCtx) {
     clear(drawCtx);
@@ -161,11 +184,19 @@ function step(drawCtx) {
 }
 
 window.onload = () => {
+    globalCtx = makeGlobalContext();
+
     // Reset by overwriting global context to default values, which holds all timing and position state.
     const resetBtn = document.getElementById("reset");
     resetBtn.onclick = () => {
         globalCtx = makeGlobalContext();
     };
+    // Allow reset from pressing Enter
+    document.addEventListener('keypress', (e) => {
+        if (e.keyCode == 13) {
+            globalCtx = makeGlobalContext();
+        }
+    });
 
     const wingArm = document.getElementById("wing-arm");
     const wingArmValue = document.getElementById("wing-arm-value");
@@ -195,6 +226,12 @@ window.onload = () => {
         stabAreaValue.innerHTML  = stabArea.value;
     };
 
+    const moment = document.getElementById("moment");
+    const momentValue = document.getElementById("moment-value");
+    momentValue.innerHTML  = moment.value;
+    moment.oninput = () => {
+        momentValue.innerHTML  = moment.value;
+    };
 
     const canvas = document.getElementById("canvas");
     run(canvas);

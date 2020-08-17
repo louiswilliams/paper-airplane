@@ -3,14 +3,11 @@ const kTargetFrameRate = 60;
 const kTargetPeriodMs = 1000 / kTargetFrameRate;
 
 // pixels / meter 
-const kPxPerMeter = 1/200;
+const kPxPerMeter = 1/300;
 
 // g
 const kG = 9.81;
-// air density kg/m^3
-const rho = 1.225
-const kWingArea = 1 / 500;
-const kMass = 1 / 100;
+const kMass = 1 / 150;
 // Higher is slower
 const kTimeScale = 50;
 
@@ -20,34 +17,42 @@ function aoaToLiftCoef(aoa) {
         return 0;
     }
     let cl = -0.005 * aoa * (aoa - 30) + 0.5;
-    if (cl < 0) {
-        return 0;
-    }
-    return cl;
+    return Math.max(cl, 0);
 }
 
 const kDrag = 1 / 100000000;
-const kLift = 1 / 10000000;
+const kLift = 1 / 5000000;
 class Plane {
     constructor() {
-        this.x = 10000;
-        this.y = 20000;
-        this.vX = 2000;
-        this.vY = -200;
+        this.x = 5000;
+        this.y = 50000;
+        this.vX = 1500;
+        this.vY = -150;
         this.theta = (this.vY/this.vX) * Math.PI;
         this.omega = 0;
+        this.v;
         this.wing = {
             armElement: document.getElementById("wing-arm"),
             areaElement: document.getElementById("wing-area"),
+            trimElement: document.getElementById("wing-trim"),
+            force: 0,
+            angleOfAttack: 0,
         };
         this.stab = {
             armElement: document.getElementById("stab-arm"),
             areaElement: document.getElementById("stab-area"),
+            trimElement: document.getElementById("stab-trim"),
+            force: 0,
+            angleOfAttack: 0,
         };
         this.body = {
             momentElement: document.getElementById("moment"),
-        }
-        this.angleFromHorizon = 0;
+            dragForce: 0,
+            gravForce: 0,
+            forceX: 0,
+            forceY: 0,
+        };
+        this.altitude = 10000;
     }
     draw(drawCtx) {
         const kScale = 10;
@@ -86,12 +91,34 @@ class Plane {
         let stabRotated = rotatePoint(scalePoint([stabArm, 0], kScale), theta);
         drawCircle(drawCtx, stabRotated[0] + x, stabRotated[1] + y, 2);
 
+        drawCtx.strokeStyle = "#0000ff";
+
+        // Draw force vectors.
+        let dir = Math.atan(this.vY/this.vX);
+        let dragForce = rotatePoint(scalePoint([- this.body.dragForce * 100, 0], kScale), dir);
+        drawLine(drawCtx, [x, y], [dragForce[0] + x, dragForce[1] + y]);
+        let wingForce = rotatePoint(scalePoint([wingArm, - this.wing.force * 100], kScale), theta);
+        drawLine(drawCtx, [wingRotated[0] + x, wingRotated[1] + y], [wingForce[0] + x, wingForce[1] + y]);
+        let stabForce = rotatePoint(scalePoint([stabArm, this.stab.force * 100], kScale), theta);
+        drawLine(drawCtx, [stabRotated[0] + x, stabRotated[1] + y], [stabForce[0] + x, stabForce[1] + y]);
+        let gravForce = scalePoint([0, this.body.gravForce * 100], kScale);
+        drawLine(drawCtx, [x, y], [gravForce[0] + x, gravForce[1] + y]);
+
+        drawCtx.strokeStyle = "#00ff00";
+        let fX  = scalePoint([this.body.forceX * 100, 0], kScale);
+        drawLine(drawCtx, [x, y], [fX[0] + x, fX[1] + y]);
+        let fY  = scalePoint([0, this.body.forceY * 100], kScale);
+        drawLine(drawCtx, [x, y], [fY[0] + x, fY[1] + y]);
+
+
         drawCtx.fillStyle = "#000";
-        drawCtx.fillText('Vy: ' + Number.parseFloat(this.vY).toFixed(1), 0, 10);
-        drawCtx.fillText('Vx: ' + Number.parseFloat(this.vX).toFixed(1), 0, 20);
-        drawCtx.fillText('\u{03C9}: ' + Number.parseFloat(this.omega).toFixed(4), 0, 30);
+        drawCtx.fillText('altitude: ' + Number.parseFloat(this.altitude).toFixed(1), 0, 20);
+        drawCtx.fillText('V: ' + Number.parseFloat(this.v).toFixed(1), 0, 30);
+        drawCtx.fillText('\u{03C9}: ' + Number.parseFloat(this.omega).toFixed(4), 0, 40);
         let angleDeg = -180 * this.theta / Math.PI;
-        drawCtx.fillText('angle from horizon: ' + Number.parseFloat(angleDeg).toFixed(1), 0, 40);
+        drawCtx.fillText('angle from horizon: ' + Number.parseFloat(angleDeg).toFixed(1), 0, 50);
+        drawCtx.fillText('aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1), 0, 60);
+        drawCtx.fillText('aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1), 0, 70);
     }
     step(globalCtx) {
         // Get input values.
@@ -99,8 +126,11 @@ class Plane {
         let moment = this.body.momentElement.value / scale;
         let wingArm = this.wing.armElement.value / scale;
         let wingArea = this.wing.areaElement.value / scale;
+        let wingTrim = parseFloat(this.wing.trimElement.value); 
         let stabArm = this.stab.armElement.value / scale;
         let stabArea = this.stab.areaElement.value / scale;
+        let stabTrim = parseFloat(this.stab.trimElement.value); 
+        console.log(stabTrim, wingTrim);
 
         // Calculate important constants from inputs.
         let kLiftWing = kLift * wingArea;
@@ -112,27 +142,35 @@ class Plane {
         // Project the velocity vector onto the directional vector to get the component of velocity in the direction we are moving.
         let vMag =mag([this.vX, this.vY]);
         let vDir = Math.atan(this.vY / this.vX);
-        let vProj = vMag * Math.cos(vDir - this.theta);
-        let wingForce = kLiftWing * Math.pow(vProj, 2);
-        let stabForce = kLiftStab * Math.pow(vProj, 2);
+        let angleOfAttack = vDir - this.theta;
+        let angleOfAttackDeg = 180 * angleOfAttack / Math.PI;
+
+        let vProj = vMag * Math.max(Math.cos(vDir - this.theta), 0);
+        this.v = vMag;
+        let wingForce = aoaToLiftCoef(angleOfAttackDeg + wingTrim) * kLiftWing * Math.pow(vProj, 2);
+        let stabForce = aoaToLiftCoef(angleOfAttackDeg + stabTrim) * kLiftStab * Math.pow(vProj, 2);
+        console.log(angleOfAttackDeg, wingForce, stabForce);
+
         let dragForce = kDrag * Math.pow(vProj, 2);
         let gravForce = kG * kMass;
 
         // Apply forces for each compontent about moment arm to create rotation. Gravity is ignored because it is applied at the center of gravity.
         this.omega = this.omega +
                      (kI * ((stabForce * stabArm) - (wingForce * wingArm)) * globalCtx.dt);
+        // console.log(wingForce*wingArm /(stabForce*stabArm));
+        // NOTE: Positive y is down, so theta increases CLOCKWISE 
         this.theta = this.theta +
                      (this.omega * globalCtx.dt);
+        this.theta = this.theta % (2 * Math.PI);
 
         // Apply sum of forces in X and Y directions to calculate velocity and translation 
-        let forceX = (wingForce * Math.cos(this.theta + Math.PI/2)) - 
-                     (stabForce * Math.cos(this.theta + Math.PI/2)) -
+        let forceX = (wingForce * Math.cos(this.theta - Math.PI/2)) - 
+                     (stabForce * Math.cos(this.theta - Math.PI/2)) -
                      (dragForce * Math.cos(this.theta));
-        let forceY = (gravForce) + 
-                     (stabForce * Math.sin(this.theta + Math.PI/2)) - 
-                     (wingForce * Math.sin(this.theta + Math.PI/2)) - 
+        let forceY = (gravForce) - 
+                     (stabForce * Math.sin(this.theta - Math.PI/2)) +
+                     (wingForce * Math.sin(this.theta - Math.PI/2)) - 
                      (dragForce * Math.sin(this.theta));
-        console.log(wingForce, stabForce, gravForce, forceX, forceY);
 
         this.vX = this.vX +
                   (forceX / kMass) * (globalCtx.dt);
@@ -143,21 +181,19 @@ class Plane {
         this.y = this.y +
                  (this.vY * globalCtx.dt);
 
-        // this.angleFromHorizon = this.theta;
-        // let theta = this.angleFromHorizon;
-
-        // this.vX = 1 / ((1 / this.vXi) + (globalCtx.t * ((kDrag / Math.cos(theta)) - (kLift * Math.tan(theta) / Math.cos(theta)))));
-        // this.vX = 1 / ((1 / this.vXi) + (globalCtx.t * ((kDrag / Math.cos(theta)))));
-        // this.vX = 1 / ((1 / this.vXi) + (globalCtx.t * (kDrag)));
-        // let vel = (Math.sqrt(kG)*Math.tanh((this.C * Math.sqrt(kG * kLift)) + (Math.sqrt(kG * kLift) * globalCtx.t)))/Math.sqrt(kLift);
-        // this.vY = vel * Math.sin(theta);
-        // this.vX = vel * Math.cos(theta);
-        // this.angleFromHorizon = Math.atan(this.vY / this.vX);
-
-        // this.vY = (Math.sqrt(kG)*Math.tanh(this.vYi * Math.sqrt(kG*kLift) + Math.sqrt(kG*kLift)*globalCtx.t))/(Math.sqrt(kLift));
-
-        // this.x += this.vX * globalCtx.dt;
-        // this.y += this.vY * globalCtx.dt;
+        // For display purposes only.
+        this.altitude = (100000 - this.y) / 10;
+        if (this.altitude <= 0) {
+            throw "crash";
+        }
+        this.wing.force = wingForce;
+        this.wing.angleOfAttack = angleOfAttackDeg + wingTrim;
+        this.stab.force = stabForce;
+        this.stab.angleOfAttack = angleOfAttackDeg + stabTrim;
+        this.body.gravForce = gravForce;
+        this.body.dragForce = dragForce;
+        this.body.forceX = forceX;
+        this.body.forceY = forceY;
     }
 }
 
@@ -233,8 +269,24 @@ window.onload = () => {
         momentValue.innerHTML  = moment.value;
     };
 
+    const wingTrim = document.getElementById("wing-trim");
+    const wingTrimValue = document.getElementById("wing-trim-value");
+    wingTrimValue.innerHTML  = wingTrim.value;
+    wingTrim.oninput = () => {
+        wingTrimValue.innerHTML  = wingTrim.value;
+    };
+
+    const stabTrim = document.getElementById("stab-trim");
+    const stabTrimValue = document.getElementById("stab-trim-value");
+    stabTrimValue.innerHTML  = stabTrim.value;
+    stabTrim.oninput = () => {
+        stabTrimValue.innerHTML  = stabTrim.value;
+    };
+
     const canvas = document.getElementById("canvas");
-    run(canvas);
+    run(canvas).catch((err) => {
+        console.log(err);
+    });
 };
 async function run(canvas) {
     // Set display size (css pixels).
@@ -314,6 +366,13 @@ function clear(ctx) {
 function drawCircle(ctx, x, y, r) {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.stroke();
+}
+
+function drawLine(ctx, a, b) {
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(b[0], b[1]);
     ctx.stroke();
 }
 

@@ -34,7 +34,7 @@ class Plane {
         this.vX = 1500;
         this.vY = 0;
         // Position relative to the horizon, where positive is clockwise.
-        this.theta = (this.vY/this.vX) * Math.PI;
+        this.theta = Math.atan(this.vY/this.vX);
         // Angular velocity 
         this.omega = 0;
 
@@ -364,7 +364,10 @@ window.onload = () => {
     });
 };
 async function run() {
+    let lastSec = 0;
     let frames = 0;
+    let frameRate = 0;
+
     let ctx = globalCtx.drawCtx;
 
     while (true) {
@@ -383,8 +386,16 @@ async function run() {
 
         step(ctx);
 
-        frames += 1;
-        let frameRate = Math.trunc(1000 * (frames / globalCtx.timeMs));
+        // Count the number of frames per second, and only update every second.
+        let thisSec = Math.floor(globalCtx.timeMs / 1000);
+        if (thisSec == lastSec) {
+            frames += 1;
+        } else if (thisSec > lastSec) {
+            frameRate = frames;
+            frames = 0;
+            lastSec = thisSec;
+        }
+
         let height = globalCtx.height;
         ctx.font = "10px Arial";
         ctx.fillText('fps: ' + frameRate, 5, height - 5);

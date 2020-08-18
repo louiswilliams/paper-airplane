@@ -51,6 +51,7 @@ class Plane {
             trimElement: document.getElementById("wing-trim"),
             force: 0,
             angleOfAttack: 0,
+            stall: false,
         };
         this.stab = {
             armElement: document.getElementById("stab-arm"),
@@ -58,6 +59,7 @@ class Plane {
             trimElement: document.getElementById("stab-trim"),
             force: 0,
             angleOfAttack: 0,
+            stall: false,
         };
         this.body = {
             momentElement: document.getElementById("moment"),
@@ -135,8 +137,24 @@ class Plane {
         // drawCtx.fillText('altitude: ' + Number.parseFloat(this.altitude).toFixed(1), 0, 10);
         drawCtx.fillText('Vel: ' + Number.parseFloat(this.vMag).toFixed(1), 0, 20);
         drawCtx.fillText('Vel dir: ' + Number.parseFloat(180 * this.vDir / Math.PI).toFixed(1), 0, 30);
-        drawCtx.fillText('aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1), 0, 40);
-        drawCtx.fillText('aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1), 0, 50);
+
+        let wingAoa = 'aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1);
+        if (this.wing.stall) {
+            drawCtx.fillStyle = "#f00";
+            wingAoa += ' STALL';
+        } else {
+            drawCtx.fillStyle = "#000";
+        }
+        drawCtx.fillText(wingAoa, 0, 40);
+
+        let stabAoa = 'aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1);
+        if (this.stab.stall) {
+            stabAoa += ' STALL';
+            drawCtx.fillStyle = "#f00";
+        } else {
+            drawCtx.fillStyle = "#000";
+        }
+        drawCtx.fillText(stabAoa, 0, 50);
     }
     step(globalCtx) {
         // Get input values.
@@ -156,16 +174,22 @@ class Plane {
 
         // Calculate instantaneous force magntitudes from each component (body, wing, stab)
         
-        // Project the velocity vector onto the directional vector to get the component of velocity in the direction we are facing.
-        // That is, only generate lift using relative wind moving directly across our lifting bodies.
         let vMag = mag([this.vX, this.vY]);
         let vDir = Math.atan(this.vY / this.vX);
+
+        // The angle of attack is the difference in direction between the direction the plane is facing, theta, and the velocity vector direction. 
         let angleOfAttack = vDir - this.theta;
         let angleOfAttackDeg = 180 * angleOfAttack / Math.PI;
 
-        let vProj = vMag * Math.max(Math.cos(vDir - this.theta), 0);
+        // The velocity magnitude is used because the angle of attack accounts for non-direct wind incidence.
         let wingForce = aoaToLiftCoef(angleOfAttackDeg + wingTrim) * kLiftWing * Math.pow(vMag, 2);
         let stabForce = aoaToLiftCoef(angleOfAttackDeg + stabTrim) * kLiftStab * Math.pow(vMag, 2);
+        if (wingForce == 0) {
+            this.wing.stall = true;
+        }
+        if (stabForce == 0) {
+            this.stab.stall = true;
+        }
 
         let dragForce = kDrag * Math.pow(vMag, 2);
         let gravForce = kG * kMass;
@@ -224,13 +248,15 @@ class Ruler {
     draw(globalCtx) {
         let drawCtx = globalCtx.drawCtx;
         drawCtx.strokeStyle = "#000000";
+        drawCtx.fillStyle = "#000000";
         let plane = globalCtx.assets["plane"];
 
         let planeX = plane.x * kPxPerMeter;
         // Plane is centered, starting line is at far left. Only draw increments of 100;
-        let lineX = -planeX + globalCtx.width/2;
-        // let ruling =  Math.ceil(lineX / this.lineStep) * this.lineStep;
-        while (lineX < planeX + globalCtx.width) {
+        let firstLineX = -planeX + globalCtx.width/2;
+        let skipX = - Math.ceil(firstLineX / this.lineStep);
+        let lineX = firstLineX + (skipX * this.lineStep);
+        while (lineX < globalCtx.width) {
             drawLine(drawCtx, [lineX, globalCtx.height], [lineX, globalCtx.height - 30]);
             drawCtx.fillText(Number.parseFloat(lineX + planeX -globalCtx.width/2).toFixed(1), lineX + 5,  globalCtx.height - 10);
             lineX += this.lineStep;
@@ -238,9 +264,10 @@ class Ruler {
 
         drawCtx.strokeStyle = "#bbb";
         let planeY = plane.y * kPxPerMeter;
-        let lineY = -planeY + globalCtx.height/2;
-        // let ruling =  Math.ceil(lineX / this.lineStep) * this.lineStep;
-        while (lineY < planeY + globalCtx.height) {
+        let firstLineY = -planeY + globalCtx.height/2;
+        let skipY = - Math.ceil(firstLineY / this.lineStep);
+        let lineY = firstLineY + (skipY * this.lineStep);
+        while (lineY < globalCtx.height) {
             drawLine(drawCtx, [0, lineY], [globalCtx.width, lineY]);
             drawCtx.fillText(Number.parseFloat(-1* (lineY + planeY -globalCtx.height/2)).toFixed(1), globalCtx.width/2 - 150, lineY + 10);
             lineY += this.lineStep;
@@ -398,6 +425,7 @@ async function run() {
 
         let height = globalCtx.height;
         ctx.font = "10px Arial";
+        ctx.fillStyle = "#000000";
         ctx.fillText('fps: ' + frameRate, 5, height - 5);
         ctx.fillText('time (s): ' + (globalCtx.timeMs / 1000), 5, height - 15);
         ctx.fillText('t: ' + Number.parseFloat(globalCtx.t).toFixed(0), 5, height - 25);

@@ -3,7 +3,7 @@ const kTargetFrameRate = 60;
 const kTargetPeriodMs = 1000 / kTargetFrameRate;
 
 // pixels / meter 
-const kPxPerMeter = 1/300;
+const kPxPerMeter = 1/100;
 
 // g
 const kG = 9.81;
@@ -23,11 +23,11 @@ function aoaToLiftCoef(aoa) {
 const kDrag = 1 / 100000000;
 const kLift = 1 / 5000000;
 class Plane {
-    constructor() {
-        this.x = 5000;
-        this.y = 50000;
+    constructor(height, width) {
+        this.x = 0;
+        this.y = 0;
         this.vX = 1500;
-        this.vY = -150;
+        this.vY = 0;
         this.theta = (this.vY/this.vX) * Math.PI;
         this.omega = 0;
         this.v;
@@ -52,13 +52,18 @@ class Plane {
             forceX: 0,
             forceY: 0,
         };
+        // TODO: This doesn't scale appropriately
         this.altitude = 10000;
+        this.canvasHeight = height;
+        this.canvasWidth = width;
     }
-    draw(drawCtx) {
+    draw(globalCtx) {
         const kScale = 10;
 
-        let x = kPxPerMeter * this.x;
-        let y = kPxPerMeter * this.y;
+        let x = globalCtx.width / 2;
+        let y = globalCtx.height / 2;
+        // let x = kPxPerMeter * this.x;
+        // let y = kPxPerMeter * this.y;
         // About origin
         let shape = [
             [-2, -0.5],
@@ -72,6 +77,7 @@ class Plane {
             [-1, -0.5],
         ];
 
+        let drawCtx = globalCtx.drawCtx;
         drawCtx.fillStyle = "#000";
         drawCtx.strokeStyle = "#000";
         let theta = this.theta;
@@ -116,9 +122,8 @@ class Plane {
         drawCtx.fillText('V: ' + Number.parseFloat(this.v).toFixed(1), 0, 30);
         drawCtx.fillText('\u{03C9}: ' + Number.parseFloat(this.omega).toFixed(4), 0, 40);
         let angleDeg = -180 * this.theta / Math.PI;
-        drawCtx.fillText('angle from horizon: ' + Number.parseFloat(angleDeg).toFixed(1), 0, 50);
-        drawCtx.fillText('aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1), 0, 60);
-        drawCtx.fillText('aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1), 0, 70);
+        drawCtx.fillText('aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1), 0, 50);
+        drawCtx.fillText('aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1), 0, 60);
     }
     step(globalCtx) {
         // Get input values.
@@ -130,7 +135,6 @@ class Plane {
         let stabArm = this.stab.armElement.value / scale;
         let stabArea = this.stab.areaElement.value / scale;
         let stabTrim = parseFloat(this.stab.trimElement.value); 
-        console.log(stabTrim, wingTrim);
 
         // Calculate important constants from inputs.
         let kLiftWing = kLift * wingArea;
@@ -151,7 +155,7 @@ class Plane {
         let stabForce = aoaToLiftCoef(angleOfAttackDeg + stabTrim) * kLiftStab * Math.pow(vProj, 2);
         console.log(angleOfAttackDeg, wingForce, stabForce);
 
-        let dragForce = kDrag * Math.pow(vProj, 2);
+        let dragForce = kDrag * Math.pow(vMag, 2);
         let gravForce = kG * kMass;
 
         // Apply forces for each compontent about moment arm to create rotation. Gravity is ignored because it is applied at the center of gravity.
@@ -182,9 +186,9 @@ class Plane {
                  (this.vY * globalCtx.dt);
 
         // For display purposes only.
-        this.altitude = (100000 - this.y) / 10;
+        this.altitude = (200000 - this.y) / 10;
         if (this.altitude <= 0) {
-            throw "crash";
+            // throw "crash";
         }
         this.wing.force = wingForce;
         this.wing.angleOfAttack = angleOfAttackDeg + wingTrim;
@@ -197,40 +201,96 @@ class Plane {
     }
 }
 
-function makeGlobalContext() {
+class Ruler {
+    constructor() {
+        this.lineStep = 100;
+    }
+    draw(globalCtx) {
+        let drawCtx = globalCtx.drawCtx;
+        drawCtx.strokeStyle = "#000000";
+        let plane = globalCtx.assets["plane"];
+
+        let planeX = plane.x * kPxPerMeter;
+        // Plane is centered, starting line is at far left. Only draw increments of 100;
+        let lineX = -planeX + globalCtx.width/2;
+        // let ruling =  Math.ceil(lineX / this.lineStep) * this.lineStep;
+        while (lineX < planeX + globalCtx.width) {
+            drawLine(drawCtx, [lineX, globalCtx.height], [lineX, globalCtx.height - 30]);
+            drawCtx.fillText(Number.parseFloat(lineX + planeX -globalCtx.width/2).toFixed(1), lineX + 5,  globalCtx.height - 10);
+            lineX += this.lineStep;
+        }
+
+        drawCtx.strokeStyle = "#bbb";
+        let planeY = plane.y * kPxPerMeter;
+        let lineY = -planeY + globalCtx.height/2;
+        // let ruling =  Math.ceil(lineX / this.lineStep) * this.lineStep;
+        while (lineY < planeY + globalCtx.height) {
+            drawLine(drawCtx, [0, lineY], [globalCtx.width, lineY]);
+            drawCtx.fillText(Number.parseFloat(-1* (lineY + planeY -globalCtx.height/2)).toFixed(1), globalCtx.width/2 - 150, lineY + 10);
+            lineY += this.lineStep;
+        }
+    }
+    step(globalCtx) {
+    }
+}
+
+function makeGlobalContext(canvas) {
+    // Set display size (css pixels).
+    const controlsHeight = document.getElementById("controls").offsetHeight;
+    const height = window.innerHeight - controlsHeight;
+    const width = window.innerWidth;
+    canvas.style.height = height + "px";
+    canvas.style.width = width + "px";
+
+    // Set actual size in memory (scaled to account for extra pixel density).
+    var scale = window.devicePixelRatio;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+
+    // Create context
+    const drawCtx = canvas.getContext("2d");
+
+    // Normalize coordinate system to use css pixels.
+    drawCtx.scale(scale, scale);
+
     return {
         startTime: 0,
         timeMs: 0,
         t: 0,
         lastT: 0,
         dt: 0,
-        assets: [
-            new Plane(),
-        ]
+        assets: {
+            plane: new Plane(),
+            ruler: new Ruler(),
+        },
+        drawCtx: drawCtx,
+        height: height,
+        width: width,
     };
 }
 let globalCtx;
 
 function step(drawCtx) {
     clear(drawCtx);
-    globalCtx.assets.forEach((asset) => {
-        asset.step(globalCtx);
-        asset.draw(drawCtx);
-    });
+    for (let asset in globalCtx.assets) {
+        globalCtx.assets[asset].step(globalCtx);
+        globalCtx.assets[asset].draw(globalCtx);
+    };
 }
 
 window.onload = () => {
-    globalCtx = makeGlobalContext();
+    const canvas = document.getElementById("canvas");
+    globalCtx = makeGlobalContext(canvas);
 
     // Reset by overwriting global context to default values, which holds all timing and position state.
     const resetBtn = document.getElementById("reset");
     resetBtn.onclick = () => {
-        globalCtx = makeGlobalContext();
+        globalCtx = makeGlobalContext(canvas);
     };
     // Allow reset from pressing Enter
     document.addEventListener('keypress', (e) => {
         if (e.keyCode == 13) {
-            globalCtx = makeGlobalContext();
+            globalCtx = makeGlobalContext(canvas);
         }
     });
 
@@ -283,31 +343,14 @@ window.onload = () => {
         stabTrimValue.innerHTML  = stabTrim.value;
     };
 
-    const canvas = document.getElementById("canvas");
-    run(canvas).catch((err) => {
+    run().catch((err) => {
         console.log(err);
     });
 };
-async function run(canvas) {
-    // Set display size (css pixels).
-    const controlsHeight = document.getElementById("controls").offsetHeight;
-    const height = window.innerHeight - controlsHeight;
-    const width = window.innerWidth;
-    canvas.style.height = height + "px";
-    canvas.style.width = width + "px";
-
-    // Set actual size in memory (scaled to account for extra pixel density).
-    var scale = window.devicePixelRatio;
-    canvas.width = width * scale;
-    canvas.height = height * scale;
-
-    // Create context
-    const ctx = canvas.getContext("2d");
-
-    // Normalize coordinate system to use css pixels.
-    ctx.scale(scale, scale);
-
+async function run() {
     let frames = 0;
+    let ctx = globalCtx.drawCtx;
+
     while (true) {
         let start = new Date();
         if (globalCtx.startTime === 0) {
@@ -326,6 +369,7 @@ async function run(canvas) {
 
         frames += 1;
         let frameRate = Math.trunc(1000 * (frames / globalCtx.timeMs));
+        let height = globalCtx.height;
         ctx.font = "10px Arial";
         ctx.fillText('fps: ' + frameRate, 5, height - 5);
         ctx.fillText('time (s): ' + (globalCtx.timeMs / 1000), 5, height - 15);

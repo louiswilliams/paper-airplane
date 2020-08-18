@@ -9,11 +9,14 @@ const kPxPerMeter = 1/100;
 const kG = 9.81;
 const kMass = 1 / 150;
 // Higher is slower
-const kTimeScale = 50;
+const kTimeScale = 30;
 
 // Rough approximation of lift as a function of aoa.
 function aoaToLiftCoef(aoa) {
     if (aoa > 18) {
+        return 0;
+    }
+    if (aoa < -5) {
         return 0;
     }
     let cl = -0.005 * aoa * (aoa - 30) + 0.5;
@@ -25,12 +28,23 @@ const kLift = 1 / 5000000;
 class Plane {
     constructor(height, width) {
         this.x = 0;
+        // Positive y is in the down direction.
         this.y = 0;
+        // Some initial velocity is necessary so the plan can generate lift.
         this.vX = 1500;
         this.vY = 0;
+        // Position relative to the horizon, where positive is clockwise.
         this.theta = (this.vY/this.vX) * Math.PI;
+        // Angular velocity 
         this.omega = 0;
-        this.v;
+
+        //
+        // The following members are used for display purposes only, and do not affect the similation.
+        //
+
+        // Velocity direction relative to the horizon, where positive is clockwise.
+        this.vMag = 0;
+        this.vDir = 0;
         this.wing = {
             armElement: document.getElementById("wing-arm"),
             areaElement: document.getElementById("wing-area"),
@@ -118,12 +132,11 @@ class Plane {
 
 
         drawCtx.fillStyle = "#000";
-        drawCtx.fillText('altitude: ' + Number.parseFloat(this.altitude).toFixed(1), 0, 20);
-        drawCtx.fillText('V: ' + Number.parseFloat(this.v).toFixed(1), 0, 30);
-        drawCtx.fillText('\u{03C9}: ' + Number.parseFloat(this.omega).toFixed(4), 0, 40);
-        let angleDeg = -180 * this.theta / Math.PI;
-        drawCtx.fillText('aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1), 0, 50);
-        drawCtx.fillText('aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1), 0, 60);
+        // drawCtx.fillText('altitude: ' + Number.parseFloat(this.altitude).toFixed(1), 0, 10);
+        drawCtx.fillText('Vel: ' + Number.parseFloat(this.vMag).toFixed(1), 0, 20);
+        drawCtx.fillText('Vel dir: ' + Number.parseFloat(180 * this.vDir / Math.PI).toFixed(1), 0, 30);
+        drawCtx.fillText('aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1), 0, 40);
+        drawCtx.fillText('aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1), 0, 50);
     }
     step(globalCtx) {
         // Get input values.
@@ -143,17 +156,16 @@ class Plane {
 
         // Calculate instantaneous force magntitudes from each component (body, wing, stab)
         
-        // Project the velocity vector onto the directional vector to get the component of velocity in the direction we are moving.
-        let vMag =mag([this.vX, this.vY]);
+        // Project the velocity vector onto the directional vector to get the component of velocity in the direction we are facing.
+        // That is, only generate lift using relative wind moving directly across our lifting bodies.
+        let vMag = mag([this.vX, this.vY]);
         let vDir = Math.atan(this.vY / this.vX);
         let angleOfAttack = vDir - this.theta;
         let angleOfAttackDeg = 180 * angleOfAttack / Math.PI;
 
         let vProj = vMag * Math.max(Math.cos(vDir - this.theta), 0);
-        this.v = vMag;
-        let wingForce = aoaToLiftCoef(angleOfAttackDeg + wingTrim) * kLiftWing * Math.pow(vProj, 2);
-        let stabForce = aoaToLiftCoef(angleOfAttackDeg + stabTrim) * kLiftStab * Math.pow(vProj, 2);
-        console.log(angleOfAttackDeg, wingForce, stabForce);
+        let wingForce = aoaToLiftCoef(angleOfAttackDeg + wingTrim) * kLiftWing * Math.pow(vMag, 2);
+        let stabForce = aoaToLiftCoef(angleOfAttackDeg + stabTrim) * kLiftStab * Math.pow(vMag, 2);
 
         let dragForce = kDrag * Math.pow(vMag, 2);
         let gravForce = kG * kMass;
@@ -161,7 +173,6 @@ class Plane {
         // Apply forces for each compontent about moment arm to create rotation. Gravity is ignored because it is applied at the center of gravity.
         this.omega = this.omega +
                      (kI * ((stabForce * stabArm) - (wingForce * wingArm)) * globalCtx.dt);
-        // console.log(wingForce*wingArm /(stabForce*stabArm));
         // NOTE: Positive y is down, so theta increases CLOCKWISE 
         this.theta = this.theta +
                      (this.omega * globalCtx.dt);
@@ -170,11 +181,13 @@ class Plane {
         // Apply sum of forces in X and Y directions to calculate velocity and translation 
         let forceX = (wingForce * Math.cos(this.theta - Math.PI/2)) - 
                      (stabForce * Math.cos(this.theta - Math.PI/2)) -
-                     (dragForce * Math.cos(this.theta));
+                     // Drag is applied opposite the velocity vector, not the positiion vector, theta.
+                     (dragForce * Math.cos(vDir));
         let forceY = (gravForce) - 
                      (stabForce * Math.sin(this.theta - Math.PI/2)) +
                      (wingForce * Math.sin(this.theta - Math.PI/2)) - 
-                     (dragForce * Math.sin(this.theta));
+                     // Drag is applied opposite the velocity vector, not the positiion vector, theta.
+                     (dragForce * Math.sin(vDir));
 
         this.vX = this.vX +
                   (forceX / kMass) * (globalCtx.dt);
@@ -185,11 +198,14 @@ class Plane {
         this.y = this.y +
                  (this.vY * globalCtx.dt);
 
-        // For display purposes only.
+        // The following are set for display purposes only, and have no affect on the similation. 
+
         this.altitude = (200000 - this.y) / 10;
         if (this.altitude <= 0) {
             // throw "crash";
         }
+        this.vMag = vMag;
+        this.vDir = vDir;
         this.wing.force = wingForce;
         this.wing.angleOfAttack = angleOfAttackDeg + wingTrim;
         this.stab.force = stabForce;

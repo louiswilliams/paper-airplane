@@ -9,7 +9,7 @@ const kPxPerMeter = 1/100;
 const kG = 9.81;
 const kMass = 1 / 150;
 // Higher is slower
-const kTimeScale = 30;
+const kTimeStep = 2;
 
 // Rough approximation of lift as a function of aoa.
 function aoaToLiftCoef(aoa) {
@@ -265,6 +265,26 @@ class Ruler {
         drawCtx.fillStyle = "#000000";
         let plane = globalCtx.assets["plane"];
 
+        drawCtx.strokeStyle = "#bbb";
+        let planeY = plane.y * kPxPerMeter;
+        let firstLineY = -planeY + globalCtx.height/2;
+        let skipY = - Math.ceil(firstLineY / this.lineStep);
+        let lineY = firstLineY + (skipY * this.lineStep);
+        while (lineY < globalCtx.height) {
+            let value = -1* (lineY + planeY -globalCtx.height/2);
+            if (value < 0) {
+                break;
+            }
+            if (value == 0) {
+                drawCtx.fillStyle = "#DEB887";
+                drawCtx.fillRect(0, lineY, globalCtx.width, globalCtx.height);
+            }
+            drawLine(drawCtx, [0, lineY], [globalCtx.width, lineY]);
+            drawCtx.fillStyle = "#000000";
+            drawCtx.fillText(Number.parseFloat(value).toFixed(0), globalCtx.width/2 - 150, lineY - 5);
+            lineY += this.lineStep;
+        }
+
         let planeX = plane.x * kPxPerMeter;
         // Plane is centered, starting line is at far left. Only draw increments of 100;
         let firstLineX = -planeX + globalCtx.width/2;
@@ -279,24 +299,6 @@ class Ruler {
             drawLine(drawCtx, [lineX, globalCtx.height], [lineX, globalCtx.height - 30]);
             drawCtx.fillText(Number.parseFloat(value).toFixed(0), lineX + 5,  globalCtx.height - 10);
             lineX += this.lineStep;
-        }
-
-        drawCtx.strokeStyle = "#bbb";
-        let planeY = plane.y * kPxPerMeter;
-        let firstLineY = -planeY + globalCtx.height/2;
-        let skipY = - Math.ceil(firstLineY / this.lineStep);
-        let lineY = firstLineY + (skipY * this.lineStep);
-        while (lineY < globalCtx.height) {
-            let value = -1* (lineY + planeY -globalCtx.height/2);
-            if (value <= 0) {
-                // drawCtx.fillText(Number.parseFloat(value).toFixed(0), globalCtx.width/2 - 150, lineY + 10);
-                // drawCtx.fillStyle = "#DEB887";
-                // drawCtx.fillRect(0, lineY, globalCtx.width, globalCtx.height);
-                break;
-            }
-            drawLine(drawCtx, [0, lineY], [globalCtx.width, lineY]);
-            drawCtx.fillText(Number.parseFloat(value).toFixed(0), globalCtx.width/2 - 150, lineY + 10);
-            lineY += this.lineStep;
         }
     }
     step(globalCtx) {}
@@ -328,8 +330,8 @@ function makeGlobalContext(canvas) {
         lastT: 0,
         dt: 0,
         assets: {
-            plane: new Plane(),
             ruler: new Ruler(),
+            plane: new Plane(),
         },
         drawCtx: drawCtx,
         height: height,
@@ -433,8 +435,8 @@ async function run() {
         }
 
         globalCtx.timeMs = start - globalCtx.startTime;
-        globalCtx.t = globalCtx.timeMs / kTimeScale;
-        globalCtx.dt = globalCtx.t - globalCtx.lastT;
+        globalCtx.dt = 1 / kTimeStep;
+        globalCtx.t = globalCtx.t + globalCtx.dt;
 
         step(ctx);
 
@@ -454,7 +456,6 @@ async function run() {
         ctx.fillText('fps: ' + frameRate, 5, height - 5);
         ctx.fillText('time (s): ' + (globalCtx.timeMs / 1000), 5, height - 15);
         ctx.fillText('t: ' + Number.parseFloat(globalCtx.t).toFixed(0), 5, height - 25);
-        ctx.fillText('dt: ' + Number.parseFloat(globalCtx.dt).toFixed(1), 5, height - 35);
 
         globalCtx.lastT = globalCtx.t;
         let stepDuration = new Date() - start;

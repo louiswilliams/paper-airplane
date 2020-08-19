@@ -1,9 +1,8 @@
-// Target framerate
-const kTargetFrameRate = 60;
-const kTargetPeriodMs = 1000 / kTargetFrameRate;
-
 // pixels / meter 
 const kPxPerMeter = 1/100;
+
+// How high does the plane start?
+const kStartingAlt = 5000;
 
 // g
 const kG = 9.81;
@@ -24,8 +23,31 @@ function aoaToLiftCoef(aoa) {
         return - aoaToLiftCoef(-6 - aoa);
     }
     let cl = (-0.005 * aoa * (aoa - 30)) + 0.5;
-    console.log(aoa, cl);
     return Math.max(cl, 0);
+}
+
+function glideRatioToGrade(ratio) {
+    if (ratio < 1) {
+        return "Not an airplane";
+    }
+    if (ratio >= 1 && ratio < 2) {
+        return "I could throw a rock further";
+    }
+    if (ratio >= 2 && ratio < 5) {
+        return "Resembles an airplane";
+    }
+    if (ratio >= 5 && ratio < 10) {
+        return "You built an airplane";
+    }
+    if (ratio >= 10 && ratio < 20) {
+        return "Great";
+    }
+    if (ratio >= 20 && ratio < 50) {
+        return "Excellent";
+    }
+    if (ratio >= 50) {
+        return "Perfection";
+    }
 }
 
 const kDrag = 1 / 100000000;
@@ -34,7 +56,7 @@ class Plane {
     constructor(height, width) {
         this.x = 0;
         // Positive y is in the down direction.
-        this.y = -5000 / kPxPerMeter;
+        this.y = -kStartingAlt / kPxPerMeter;
         // Some initial velocity is necessary so the plan can generate lift.
         this.vX = 1500;
         this.vY = 0;
@@ -144,11 +166,22 @@ class Plane {
             altText += ' CRASH';
             drawCtx.fillStyle = "#f00";
             this.crashed = true;
+            // After crashing, draw again, so we can see what happened.
+            globalCtx.drawAnimation = true;
         } else {
             altText += Number.parseFloat(alt * kPxPerMeter).toFixed(1);
             drawCtx.fillStyle = "#000";
         }
         drawCtx.fillText(altText, 0, 10);
+        if (this.crashed) {
+            drawCtx.font = "16pt Arial";
+            drawCtx.fillText('Your glider made it ' +
+                             Number.parseFloat(this.x * kPxPerMeter).toFixed(1) + ' ft', globalCtx.width/2 - 150, globalCtx.height/2 + 50);
+            let ratio =kPxPerMeter * this.x / kStartingAlt;
+            drawCtx.fillText('Glide ratio: ' + Number.parseFloat(ratio).toFixed(1), globalCtx.width/2 - 150, globalCtx.height/2 + 75);
+            drawCtx.fillText('Evaluation: "' + glideRatioToGrade(ratio) + '"', globalCtx.width/2 - 150, globalCtx.height/2 + 100);
+            drawCtx.font = "8pt Arial";
+        }
 
         drawCtx.fillStyle = "#000";
         drawCtx.fillText('Distance (ft): ' + Number.parseFloat(this.x * kPxPerMeter).toFixed(1), 0, 20);
@@ -180,10 +213,7 @@ class Plane {
         let ratio = (wingMoment - stabMoment) / wingMoment;
         if (Math.abs(ratio) > 0.10) {
             drawCtx.fillStyle = "#f00";
-            drawCtx.fillText('Unstable! Wing moment and stab moment should be similar', 0, 90);
-        } else {
-            drawCtx.fillStyle = "#000";
-            drawCtx.fillText('Stable', 0, 90);
+            drawCtx.fillText('Potentially unstable! Wing moment and stab moment should be similar', 0, 90);
         }
     }
     step(globalCtx) {
@@ -279,7 +309,8 @@ class Plane {
 
 class Ruler {
     constructor() {
-        this.lineStep = 100;
+        this.lineStepX = 200;
+        this.lineStepY = 100;
     }
     draw(globalCtx) {
         let drawCtx = globalCtx.drawCtx;
@@ -290,37 +321,37 @@ class Ruler {
         drawCtx.strokeStyle = "#bbb";
         let planeY = plane.y * kPxPerMeter;
         let firstLineY = -planeY + globalCtx.height/2;
-        let skipY = - Math.ceil(firstLineY / this.lineStep);
-        let lineY = firstLineY + (skipY * this.lineStep);
+        let skipY = - Math.ceil(firstLineY / this.lineStepY);
+        let lineY = firstLineY + (skipY * this.lineStepY);
         while (lineY < globalCtx.height) {
             let value = -1* (lineY + planeY -globalCtx.height/2);
             if (value < 0) {
                 break;
             }
-            if (value == 0) {
-                drawCtx.fillStyle = "#DEB887";
-                drawCtx.fillRect(0, lineY, globalCtx.width, globalCtx.height);
-            }
+            // if (value == 0) {
+            //     drawCtx.fillStyle = "#DEB887";
+            //     drawCtx.fillRect(0, lineY, globalCtx.width, globalCtx.height);
+            // }
             drawLine(drawCtx, [0, lineY], [globalCtx.width, lineY]);
             drawCtx.fillStyle = "#000000";
             drawCtx.fillText(Number.parseFloat(value).toFixed(0), globalCtx.width/2 - 150, lineY - 5);
-            lineY += this.lineStep;
+            lineY += this.lineStepY;
         }
 
         let planeX = plane.x * kPxPerMeter;
         // Plane is centered, starting line is at far left. Only draw increments of 100;
         let firstLineX = -planeX + globalCtx.width/2;
-        let skipX = - Math.ceil(firstLineX / this.lineStep);
-        let lineX = firstLineX + (skipX * this.lineStep);
+        let skipX = - Math.ceil(firstLineX / this.lineStepX);
+        let lineX = firstLineX + (skipX * this.lineStepX);
         while (lineX < globalCtx.width) {
             let value = lineX + planeX -globalCtx.width/2;
             if (value < 0) {
-                lineX += this.lineStep;
+                lineX += this.lineStepX;
                 continue;
             }
             drawLine(drawCtx, [lineX, globalCtx.height], [lineX, globalCtx.height - 30]);
             drawCtx.fillText(Number.parseFloat(value).toFixed(0), lineX + 5,  globalCtx.height - 10);
-            lineX += this.lineStep;
+            lineX += this.lineStepX;
         }
     }
     step(globalCtx) {}
@@ -354,6 +385,8 @@ function makeGlobalContext(canvas) {
             ruler: new Ruler(),
             plane: new Plane(),
         },
+        speed: 0,
+        drawAnimation: true,
         drawCtx: drawCtx,
         height: height,
         width: width,
@@ -361,11 +394,28 @@ function makeGlobalContext(canvas) {
 }
 let globalCtx;
 
-function step(drawCtx) {
-    clear(drawCtx);
+function step(globalCtx) {
+    clear(globalCtx.drawCtx);
     for (let asset in globalCtx.assets) {
         globalCtx.assets[asset].step(globalCtx);
-        globalCtx.assets[asset].draw(globalCtx);
+        if (globalCtx.drawAnimation) {
+            globalCtx.assets[asset].draw(globalCtx);
+        }
+    };
+}
+
+function initSliderInput(inputName, valueName, onInput) {
+    const elem = document.getElementById(inputName);
+    const value = document.getElementById(valueName);
+    let update = (v) => {
+        value.innerHTML  = v;
+        if (onInput) {
+            onInput(v);
+        }
+    }
+    update(elem.value);
+    elem.oninput = () => {
+        update(elem.value);
     };
 }
 
@@ -385,53 +435,19 @@ window.onload = () => {
         }
     });
 
-    const wingArm = document.getElementById("wing-arm");
-    const wingArmValue = document.getElementById("wing-arm-value");
-    wingArmValue.innerHTML  = wingArm.value;
-    wingArm.oninput = () => {
-        wingArmValue.innerHTML  = wingArm.value;
-    };
-
-    const stabArm = document.getElementById("stab-arm");
-    const stabArmValue = document.getElementById("stab-arm-value");
-    stabArmValue.innerHTML  = stabArm.value;
-    stabArm.oninput = () => {
-        stabArmValue.innerHTML  = stabArm.value;
-    };
-
-    const wingArea = document.getElementById("wing-area");
-    const wingAreaValue = document.getElementById("wing-area-value");
-    wingAreaValue.innerHTML  = wingArea.value;
-    wingArea.oninput = () => {
-        wingAreaValue.innerHTML  = wingArea.value;
-    };
-
-    const stabArea = document.getElementById("stab-area");
-    const stabAreaValue = document.getElementById("stab-area-value");
-    stabAreaValue.innerHTML  = stabArea.value;
-    stabArea.oninput = () => {
-        stabAreaValue.innerHTML  = stabArea.value;
-    };
-
-    // const moment = document.getElementById("moment");
-    // const momentValue = document.getElementById("moment-value");
-    // momentValue.innerHTML  = moment.value;
-    // moment.oninput = () => {
-    //     momentValue.innerHTML  = moment.value;
-    // };
-
-    const wingTrim = document.getElementById("wing-trim");
-    const wingTrimValue = document.getElementById("wing-trim-value");
-    wingTrimValue.innerHTML  = wingTrim.value;
-    wingTrim.oninput = () => {
-        wingTrimValue.innerHTML  = wingTrim.value;
-    };
-
-    const stabTrim = document.getElementById("stab-trim");
-    const stabTrimValue = document.getElementById("stab-trim-value");
-    stabTrimValue.innerHTML  = stabTrim.value;
-    stabTrim.oninput = () => {
-        stabTrimValue.innerHTML  = stabTrim.value;
+    initSliderInput("wing-arm", "wing-arm-value");
+    initSliderInput("stab-arm", "stab-arm-value");
+    initSliderInput("wing-area", "wing-area-value");
+    initSliderInput("stab-area", "stab-area-value");
+    initSliderInput("wing-trim", "wing-trim-value");
+    initSliderInput("stab-trim", "stab-trim-value");
+    initSliderInput("sim-speed", "sim-speed-value", (value) => {
+        globalCtx.speed = value;
+    });
+    
+    let drawElem = document.getElementById("sim-draw");
+    drawElem.oninput = () => {
+        globalCtx.drawAnimation = drawElem.checked;
     };
 
     run().catch((err) => {
@@ -450,7 +466,6 @@ async function run() {
         if (globalCtx.startTime === 0) {
             globalCtx.startTime = start;
             globalCtx.t = 0;
-            await sleep(kTargetPeriodMs);
             continue;
         }
 
@@ -458,7 +473,7 @@ async function run() {
         globalCtx.dt = kTimeStepMs;
         globalCtx.t = globalCtx.t + globalCtx.dt;
 
-        step(ctx);
+        step(globalCtx);
 
         // Count the number of frames per second, and only update every second.
         let thisSec = Math.floor(globalCtx.timeMs / 1000);
@@ -478,7 +493,9 @@ async function run() {
         // ctx.fillText('t: ' + Number.parseFloat(globalCtx.t).toFixed(0), 5, height - 25);
 
         let stepDuration = new Date() - start;
-        let waitMs = kTargetPeriodMs - stepDuration;
+        let dutyCycle = globalCtx.speed / 100;
+        let frameDelay = 1 / dutyCycle;
+        let waitMs = frameDelay - stepDuration;
         if (waitMs > 0) {
             await sleep(waitMs);
         }

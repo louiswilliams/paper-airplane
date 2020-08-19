@@ -8,10 +8,11 @@
 <canvas id="canvas"></canvas>
 <div id="controls">
 <ul>
-    <li>Build a paper airplane that glides as far as possible</li>
+    <li>Build an airplane that glides as far as possible</li>
     <li>Counteract the forces of gravity and drag</li>
     <li>Balance the upward force of the wing with the downward force of the rear stabilizer</li>
 </ul>
+<button id="reset">Restart ('Enter')</button><br>
 <table>
     <tr>
         <th></th>
@@ -51,9 +52,25 @@
             <input type="range" min="-5" max="5" value="0.5" step="0.1" class="slider" id="stab-trim">
         </td>
     </tr>
-    <tr><td>
-        <button id="reset">Restart ('Enter')</button><br>
-    </td></tr>
+</table>
+<table>
+    <tr>
+        <th></th>
+        <th>Simulation</th>
+    </tr>
+    <tr>
+        <td>Speed (%)</td>
+        <td>
+            <span id="sim-speed-value"></span><br>
+            <input type="range" min="1" max="100" value="6" step="0.1" class="slider" id="sim-speed">
+        </td>
+    </tr>
+    <tr>
+        <td>Draw?</td>
+        <td>
+            <input type="checkbox" checked=true id="sim-draw">
+        </td>
+    </tr>
 </table>
 </div>
 </body>

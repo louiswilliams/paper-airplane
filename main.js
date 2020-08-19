@@ -213,7 +213,7 @@ class Plane {
         let ratio = (wingMoment - stabMoment) / wingMoment;
         if (Math.abs(ratio) > 0.10) {
             drawCtx.fillStyle = "#f00";
-            drawCtx.fillText('Potentially unstable! Wing moment and stab moment should be similar', 0, 90);
+            drawCtx.fillText('Potentially unstable! Wing moment and stab moment should be close in value', 0, 90);
         }
     }
     step(globalCtx) {
@@ -370,12 +370,14 @@ function makeGlobalContext(canvas) {
     canvas.width = width * scale;
     canvas.height = height * scale;
 
+
     // Create context
     const drawCtx = canvas.getContext("2d");
 
     // Normalize coordinate system to use css pixels.
     drawCtx.scale(scale, scale);
 
+    const speed = document.getElementById("sim-speed").value;
     return {
         startTime: 0,
         timeMs: 0,
@@ -385,8 +387,8 @@ function makeGlobalContext(canvas) {
             ruler: new Ruler(),
             plane: new Plane(),
         },
-        speed: 0,
         drawAnimation: true,
+        speed: speed,
         drawCtx: drawCtx,
         height: height,
         width: width,
@@ -404,10 +406,24 @@ function step(globalCtx) {
     };
 }
 
-function initSliderInput(inputName, valueName, onInput) {
+function initSliderInput(inputName, valueName, defaultValue, urlParam, onInput) {
     const elem = document.getElementById(inputName);
     const value = document.getElementById(valueName);
+    let param = (new URL(window.location.href)).searchParams.get(urlParam);
+    if (urlParam && param) {
+        elem.value = param;
+    } else {
+        elem.value = defaultValue;
+    }
+
     let update = (v) => {
+        if (urlParam) {
+            let params = (new URL(window.location.href)).searchParams;
+            params.set(urlParam, v);
+            let newUrl = window.location.protocol + "//" + window.location.host +
+                        window.location.pathname + '?' + params.toString();
+            window.history.pushState({path: newUrl},'',newUrl);
+        }
         value.innerHTML  = v;
         if (onInput) {
             onInput(v);
@@ -423,25 +439,25 @@ window.onload = () => {
     const canvas = document.getElementById("canvas");
     globalCtx = makeGlobalContext(canvas);
 
-    // Reset by overwriting global context to default values, which holds all timing and position state.
-    const resetBtn = document.getElementById("reset");
-    resetBtn.onclick = () => {
+    // Restart by overwriting global context to default values, which holds all timing and position state.
+    const restartBtn = document.getElementById("restart");
+    restartBtn.onclick = () => {
         globalCtx = makeGlobalContext(canvas);
     };
-    // Allow reset from pressing Enter
+    // Allow restart by pressing Enter
     document.addEventListener('keypress', (e) => {
         if (e.keyCode == 13) {
             globalCtx = makeGlobalContext(canvas);
         }
     });
 
-    initSliderInput("wing-arm", "wing-arm-value");
-    initSliderInput("stab-arm", "stab-arm-value");
-    initSliderInput("wing-area", "wing-area-value");
-    initSliderInput("stab-area", "stab-area-value");
-    initSliderInput("wing-trim", "wing-trim-value");
-    initSliderInput("stab-trim", "stab-trim-value");
-    initSliderInput("sim-speed", "sim-speed-value", (value) => {
+    initSliderInput("wing-arm", "wing-arm-value", -4, "war");
+    initSliderInput("stab-arm", "stab-arm-value", -56, "sar");
+    initSliderInput("wing-area", "wing-area-value", 300, "wa");
+    initSliderInput("stab-area", "stab-area-value", 20, "sa");
+    initSliderInput("wing-trim", "wing-trim-value", 0, "wt");
+    initSliderInput("stab-trim", "stab-trim-value", 0.5, "st");
+    initSliderInput("sim-speed", "sim-speed-value", 6, null, (value) => {
         globalCtx.speed = value;
     });
     

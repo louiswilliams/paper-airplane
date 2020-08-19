@@ -8,8 +8,8 @@ const kPxPerMeter = 1/100;
 // g
 const kG = 9.81;
 const kMass = 1 / 150;
-// Higher is slower
-const kTimeStep = 2;
+// Higher results in a faster, less precise simulation.
+const kTimeStepMs = 1 / 2;
 
 // Rough approximation of lift as a function of aoa.
 function aoaToLiftCoef(aoa) {
@@ -29,7 +29,7 @@ class Plane {
     constructor(height, width) {
         this.x = 0;
         // Positive y is in the down direction.
-        this.y = -1000 / kPxPerMeter;
+        this.y = -5000 / kPxPerMeter;
         // Some initial velocity is necessary so the plan can generate lift.
         this.vX = 1500;
         this.vY = 0;
@@ -167,6 +167,19 @@ class Plane {
         }
         drawCtx.fillText(stabAoa, 0, 50);
 
+        let wingMoment = this.wing.armElement.value * this.wing.areaElement.value;
+        let stabMoment = this.stab.armElement.value * this.stab.areaElement.value;
+        drawCtx.fillStyle = "#000";
+        drawCtx.fillText('Wing moment: ' + Number.parseFloat(wingMoment).toFixed(1), 0, 70);
+        drawCtx.fillText('Stab moment: ' + Number.parseFloat(stabMoment).toFixed(1), 0, 80);
+        let ratio = (wingMoment - stabMoment) / wingMoment;
+        if (Math.abs(ratio) > 0.10) {
+            drawCtx.fillStyle = "#f00";
+            drawCtx.fillText('Unstable! Wing moment and stab moment should be similar', 0, 90);
+        } else {
+            drawCtx.fillStyle = "#000";
+            drawCtx.fillText('Stable', 0, 90);
+        }
     }
     step(globalCtx) {
         // Crashing stops the simulation.
@@ -213,8 +226,10 @@ class Plane {
         let gravForce = kG * kMass;
 
         // Apply forces for each compontent about moment arm to create rotation. Gravity is ignored because it is applied at the center of gravity.
+        let wingMoment = wingForce * wingArm;
+        let stabMoment = stabForce * stabArm;
         this.omega = this.omega +
-                     (kI * ((stabForce * stabArm) - (wingForce * wingArm)) * globalCtx.dt);
+                     (kI * (stabMoment - wingMoment) * globalCtx.dt);
         // NOTE: Positive y is down, so theta increases CLOCKWISE 
         this.theta = this.theta +
                      (this.omega * globalCtx.dt);
@@ -246,8 +261,10 @@ class Plane {
         this.vDir = vDir;
         this.wing.force = wingForce;
         this.wing.angleOfAttack = angleOfAttackDeg + wingTrim;
+        this.wing.moment = wingMoment;
         this.stab.force = stabForce;
         this.stab.angleOfAttack = angleOfAttackDeg + stabTrim;
+        this.stab.moment = stabMoment;
         this.body.gravForce = gravForce;
         this.body.dragForce = dragForce;
         this.body.forceX = forceX;
@@ -327,7 +344,6 @@ function makeGlobalContext(canvas) {
         startTime: 0,
         timeMs: 0,
         t: 0,
-        lastT: 0,
         dt: 0,
         assets: {
             ruler: new Ruler(),
@@ -430,12 +446,11 @@ async function run() {
             globalCtx.startTime = start;
             globalCtx.t = 0;
             await sleep(kTargetPeriodMs);
-            globalCtx.lastT = 0;
             continue;
         }
 
         globalCtx.timeMs = start - globalCtx.startTime;
-        globalCtx.dt = 1 / kTimeStep;
+        globalCtx.dt = kTimeStepMs;
         globalCtx.t = globalCtx.t + globalCtx.dt;
 
         step(ctx);
@@ -453,11 +468,10 @@ async function run() {
         let height = globalCtx.height;
         ctx.font = "10px Arial";
         ctx.fillStyle = "#000000";
-        ctx.fillText('fps: ' + frameRate, 5, height - 5);
-        ctx.fillText('time (s): ' + (globalCtx.timeMs / 1000), 5, height - 15);
-        ctx.fillText('t: ' + Number.parseFloat(globalCtx.t).toFixed(0), 5, height - 25);
+        ctx.fillText('fps: ' + frameRate, 5, height - 35);
+        // ctx.fillText('time (s): ' + (globalCtx.timeMs / 1000), 5, height - 15);
+        // ctx.fillText('t: ' + Number.parseFloat(globalCtx.t).toFixed(0), 5, height - 25);
 
-        globalCtx.lastT = globalCtx.t;
         let stepDuration = new Date() - start;
         let waitMs = kTargetPeriodMs - stepDuration;
         if (waitMs > 0) {

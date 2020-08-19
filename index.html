@@ -1,19 +1,60 @@
 <html>
 <head>
 <link rel="stylesheet" type="text/css" href="main.css"></link>
+<title>Paper Airplane Simulator</title>
 <script src="main.js"></script>
 </head>
 <body>
 <canvas id="canvas"></canvas>
 <div id="controls">
-    <input type="range" min="-100" max="1" value="-4" step="0.1" class="slider" id="wing-arm">Wing Moment Arm: <span id="wing-arm-value"></span></span><br>
-    <input type="range" min="-100" max="1" value="-56" step="0.1" class="slider" id="stab-arm">Horizontal Stabilizer Moment Arm: <span id="stab-arm-value"></span><br>
-    <input type="range" min="1" max="500" value="300" step="0.1" class="slider" id="wing-area">Wing Surface Area: <span id="wing-area-value"></span></span><br>
-    <input type="range" min="1" max="100" value="20" step="0.1" class="slider" id="stab-area">Horizontal Stabilizer Surface Area: <span id="stab-area-value"></span><br>
-    <input type="range" min="-5" max="5" value="0" step="0.1" class="slider" id="wing-trim">Wing Trim (deg): <span id="wing-trim-value"></span><br>
-    <input type="range" min="-5" max="5" value="0.5" step="0.1" class="slider" id="stab-trim">Horizontal Stabilizer Trim (deg): <span id="stab-trim-value"></span><br>
-    <!-- <input type="range" min="1" max="10000" value="150" class="slider" id="moment">Moment of Interia: <span id="moment-value"></span><br> -->
-    <button id="reset">Reset</button><br>
+<ul>
+    <li>Build a paper airplane that glides as far as possible</li>
+    <li>Counteract the forces of gravity and drag</li>
+    <li>Balance the upward force of the wing with the downward force of the rear stabilizer</li>
+</ul>
+<table>
+    <tr>
+        <th></th>
+        <th>Wing</th>
+        <th>Rear Stabilizer</th>
+    </tr>
+    <tr>
+        <td>Moment Arm</td>
+        <td>
+            <span id="wing-arm-value"></span></span><br>
+            <input type="range" min="-70" max="1" value="-4" step="0.1" class="slider" id="wing-arm">
+        </td>
+        <td>
+            <span id="stab-arm-value"></span><br>
+            <input type="range" min="-70" max="1" value="-56" step="0.1" class="slider" id="stab-arm">
+        </td>
+    </tr>
+    <tr>
+        <td>Surface Area</td>
+        <td>
+            <span id="wing-area-value"></span></span><br>
+            <input type="range" min="1" max="500" value="300" step="0.1" class="slider" id="wing-area">
+        </td>
+        <td>
+            <span id="stab-area-value"></span><br>
+            <input type="range" min="1" max="100" value="20" step="0.1" class="slider" id="stab-area">
+        </td>
+    </tr>
+    <tr>
+        <td>Trim (deg)</td>
+        <td>
+            <span id="wing-trim-value"></span><br>
+            <input type="range" min="-5" max="5" value="0" step="0.1" class="slider" id="wing-trim">
+        </td>
+        <td>
+            <span id="stab-trim-value"></span><br>
+            <input type="range" min="-5" max="5" value="0.5" step="0.1" class="slider" id="stab-trim">
+        </td>
+    </tr>
+    <tr><td>
+        <button id="reset">Restart ('Enter')</button><br>
+    </td></tr>
+</table>
 </div>
 </body>
 

@@ -1,6 +1,7 @@
 body {
    margin: 0px;
    padding: 0px; 
+   line-height: 12pt;
 }
 
 #canvas {
@@ -8,5 +9,26 @@ body {
 }
 
 #controls {
-    height: 165px;
+    height: 290px;
+}
+
+#controls table th{
+    text-align: center;
+    height: 40px;
+}
+
+#controls table td:first-child{
+    text-align: right;
+    padding: 0px 5px;
+}
+
+#controls table td {
+    padding: 1px;
+    text-align: center;
+    margin: 0px;
+    border: 0;
+}
+
+p {
+    padding: 5px;
 }

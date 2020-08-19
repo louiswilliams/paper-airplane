@@ -13,13 +13,18 @@ const kTimeStepMs = 1 / 2;
 
 // Rough approximation of lift as a function of aoa.
 function aoaToLiftCoef(aoa) {
+    // Wing stalls above this angle of attack.
     if (aoa > 18) {
         return 0;
     }
-    if (aoa < -5) {
-        return 0;
+    // The wing generates lift at small negative angles of attack, but hits zero around -3. At values
+    // lower than this, the wing will generate lift in the opposite direction with the same curve,
+    // but at an offset that starts to generate lift.
+    if (aoa < -3) {
+        return - aoaToLiftCoef(-6 - aoa);
     }
-    let cl = -0.005 * aoa * (aoa - 30) + 0.5;
+    let cl = (-0.005 * aoa * (aoa - 30)) + 0.5;
+    console.log(aoa, cl);
     return Math.max(cl, 0);
 }
 

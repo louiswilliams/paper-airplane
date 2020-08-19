@@ -29,7 +29,7 @@ class Plane {
     constructor(height, width) {
         this.x = 0;
         // Positive y is in the down direction.
-        this.y = 0;
+        this.y = -1000 / kPxPerMeter;
         // Some initial velocity is necessary so the plan can generate lift.
         this.vX = 1500;
         this.vY = 0;
@@ -37,6 +37,8 @@ class Plane {
         this.theta = Math.atan(this.vY/this.vX);
         // Angular velocity 
         this.omega = 0;
+        // When true, step() becomes a no-op, stopping the simulation.
+        this.crashed = false;
 
         //
         // The following members are used for display purposes only, and do not affect the similation.
@@ -68,8 +70,6 @@ class Plane {
             forceX: 0,
             forceY: 0,
         };
-        // TODO: This doesn't scale appropriately
-        this.altitude = 10000;
         this.canvasHeight = height;
         this.canvasWidth = width;
     }
@@ -78,8 +78,7 @@ class Plane {
 
         let x = globalCtx.width / 2;
         let y = globalCtx.height / 2;
-        // let x = kPxPerMeter * this.x;
-        // let y = kPxPerMeter * this.y;
+
         // About origin
         let shape = [
             [-2, -0.5],
@@ -134,11 +133,23 @@ class Plane {
 
 
         drawCtx.fillStyle = "#000";
-        // drawCtx.fillText('altitude: ' + Number.parseFloat(this.altitude).toFixed(1), 0, 10);
-        drawCtx.fillText('Vel: ' + Number.parseFloat(this.vMag).toFixed(1), 0, 20);
-        drawCtx.fillText('Vel dir: ' + Number.parseFloat(180 * this.vDir / Math.PI).toFixed(1), 0, 30);
+        let alt = - this.y;
+        let altText = 'altitude (ft): ';
+        if (alt <= 0) {
+            altText += ' CRASH';
+            drawCtx.fillStyle = "#f00";
+            this.crashed = true;
+        } else {
+            altText += Number.parseFloat(alt * kPxPerMeter).toFixed(1);
+            drawCtx.fillStyle = "#000";
+        }
+        drawCtx.fillText(altText, 0, 10);
 
-        let wingAoa = 'aoa (wing): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1);
+        drawCtx.fillStyle = "#000";
+        drawCtx.fillText('Distance (ft): ' + Number.parseFloat(this.x * kPxPerMeter).toFixed(1), 0, 20);
+        drawCtx.fillText('Velocity (ft/s): ' + Number.parseFloat(this.vMag * kPxPerMeter).toFixed(1), 0, 30);
+
+        let wingAoa = 'AoA, wing (deg): ' + Number.parseFloat(this.wing.angleOfAttack).toFixed(1);
         if (this.wing.stall) {
             drawCtx.fillStyle = "#f00";
             wingAoa += ' STALL';
@@ -147,7 +158,7 @@ class Plane {
         }
         drawCtx.fillText(wingAoa, 0, 40);
 
-        let stabAoa = 'aoa (stab): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1);
+        let stabAoa = 'AoA, stab (deg): ' + Number.parseFloat(this.stab.angleOfAttack).toFixed(1);
         if (this.stab.stall) {
             stabAoa += ' STALL';
             drawCtx.fillStyle = "#f00";
@@ -155,11 +166,18 @@ class Plane {
             drawCtx.fillStyle = "#000";
         }
         drawCtx.fillText(stabAoa, 0, 50);
+
     }
     step(globalCtx) {
+        // Crashing stops the simulation.
+        if (this.crashed) {
+            return;
+        }
+
         // Get input values.
-        let scale = 1000    ;
-        let moment = this.body.momentElement.value / scale;
+        let scale = 1000;
+        // let moment = this.body.momentElement.value / scale;
+        let moment = 1 / 10;
         let wingArm = this.wing.armElement.value / scale;
         let wingArea = this.wing.areaElement.value / scale;
         let wingTrim = parseFloat(this.wing.trimElement.value); 
@@ -224,10 +242,6 @@ class Plane {
 
         // The following are set for display purposes only, and have no affect on the similation. 
 
-        this.altitude = (200000 - this.y) / 10;
-        if (this.altitude <= 0) {
-            // throw "crash";
-        }
         this.vMag = vMag;
         this.vDir = vDir;
         this.wing.force = wingForce;
@@ -257,8 +271,13 @@ class Ruler {
         let skipX = - Math.ceil(firstLineX / this.lineStep);
         let lineX = firstLineX + (skipX * this.lineStep);
         while (lineX < globalCtx.width) {
+            let value = lineX + planeX -globalCtx.width/2;
+            if (value < 0) {
+                lineX += this.lineStep;
+                continue;
+            }
             drawLine(drawCtx, [lineX, globalCtx.height], [lineX, globalCtx.height - 30]);
-            drawCtx.fillText(Number.parseFloat(lineX + planeX -globalCtx.width/2).toFixed(1), lineX + 5,  globalCtx.height - 10);
+            drawCtx.fillText(Number.parseFloat(value).toFixed(0), lineX + 5,  globalCtx.height - 10);
             lineX += this.lineStep;
         }
 
@@ -268,13 +287,19 @@ class Ruler {
         let skipY = - Math.ceil(firstLineY / this.lineStep);
         let lineY = firstLineY + (skipY * this.lineStep);
         while (lineY < globalCtx.height) {
+            let value = -1* (lineY + planeY -globalCtx.height/2);
+            if (value <= 0) {
+                // drawCtx.fillText(Number.parseFloat(value).toFixed(0), globalCtx.width/2 - 150, lineY + 10);
+                // drawCtx.fillStyle = "#DEB887";
+                // drawCtx.fillRect(0, lineY, globalCtx.width, globalCtx.height);
+                break;
+            }
             drawLine(drawCtx, [0, lineY], [globalCtx.width, lineY]);
-            drawCtx.fillText(Number.parseFloat(-1* (lineY + planeY -globalCtx.height/2)).toFixed(1), globalCtx.width/2 - 150, lineY + 10);
+            drawCtx.fillText(Number.parseFloat(value).toFixed(0), globalCtx.width/2 - 150, lineY + 10);
             lineY += this.lineStep;
         }
     }
-    step(globalCtx) {
-    }
+    step(globalCtx) {}
 }
 
 function makeGlobalContext(canvas) {
@@ -365,12 +390,12 @@ window.onload = () => {
         stabAreaValue.innerHTML  = stabArea.value;
     };
 
-    const moment = document.getElementById("moment");
-    const momentValue = document.getElementById("moment-value");
-    momentValue.innerHTML  = moment.value;
-    moment.oninput = () => {
-        momentValue.innerHTML  = moment.value;
-    };
+    // const moment = document.getElementById("moment");
+    // const momentValue = document.getElementById("moment-value");
+    // momentValue.innerHTML  = moment.value;
+    // moment.oninput = () => {
+    //     momentValue.innerHTML  = moment.value;
+    // };
 
     const wingTrim = document.getElementById("wing-trim");
     const wingTrimValue = document.getElementById("wing-trim-value");
